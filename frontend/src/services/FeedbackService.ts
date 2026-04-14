@@ -1,1 +1,0 @@
-export { feedbackService } from "./AllServices";

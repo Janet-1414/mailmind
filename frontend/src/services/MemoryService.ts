@@ -1,2 +1,0 @@
-export { memoryService } from "./AllServices";
-

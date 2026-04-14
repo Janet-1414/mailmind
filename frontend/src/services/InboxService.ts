@@ -1,1 +1,0 @@
-export { inboxService } from "./AllServices";
