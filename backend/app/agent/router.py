@@ -94,7 +94,8 @@ async def generate_reply(
         confidence_score=final_state.get("confidence_score"),
     )
     db.add(log)
-    thread.updated_at = log.created_at if hasattr(log, "created_at") else thread.updated_at
+    from datetime import datetime, timezone
+    thread.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(log)
 

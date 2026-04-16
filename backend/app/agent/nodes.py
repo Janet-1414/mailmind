@@ -47,7 +47,7 @@ class AgentNodes:
             timeout=settings.ANTHROPIC_TIMEOUT,
         )
 
-    @RetryHandler(max_retries=3, backoff_factor=2.0)
+    @RetryHandler(max_attempts=3, backoff_factor=2.0)
     async def _call_llm(self, state: AgentState, prompt: str) -> tuple[str, object]:
         """Call the appropriate LLM based on the model in state. Returns (text, usage)."""
         model = state["model"]
@@ -81,7 +81,8 @@ class AgentNodes:
         logger.info("Structural analysis: %s", struct_summary)
 
         text, usage = await self._call_llm(state, prompts.analyze(state["email_content"]))
-        counter = TokenCounter(state["model"], usage)
+        counter = TokenCounter(state["model"])
+        counter.add(usage)
 
         try:
             parsed = json.loads(text)
@@ -148,7 +149,8 @@ class AgentNodes:
             conversation_history=state.get("conversation_history", []),
         )
         draft_text, usage = await self._call_llm(state, prompt)
-        counter = TokenCounter(state["model"], usage)
+        counter = TokenCounter(state["model"])
+        counter.add(usage)
         return {**state, "draft_reply": draft_text, **counter.to_dict()}
 
     async def refine(self, state: AgentState) -> AgentState:
@@ -157,7 +159,10 @@ class AgentNodes:
             state,
             prompts.refine(state["tone"], state["draft_reply"], state.get("hint", "")),
         )
-        counter = TokenCounter(state["model"], usage)
+        
+        counter = TokenCounter(state["model"])
+        counter.add(usage)
+
 
         sources: list[str] = []
         if state.get("memory_used"):

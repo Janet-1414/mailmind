@@ -38,6 +38,11 @@ class EmailLog(Base):
     confidence_score  = Column(Float,   nullable=True)
     created_at        = Column(DateTime(timezone=True), default=_now, nullable=False)
 
+    # Relationships — must match back_populates on User, Thread, and Feedback
+    user      = relationship("User",     back_populates="email_logs")
+    thread    = relationship("Thread",   back_populates="email_logs")
+    feedbacks = relationship("Feedback", back_populates="email_log", cascade="all, delete")
+
 
 class MemoryLog(Base):
     __tablename__ = "memory_logs"

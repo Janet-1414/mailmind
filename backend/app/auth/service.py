@@ -30,7 +30,7 @@ class AuthService:
 
     def create_access_token(self, user_id: str, expires_delta: Optional[timedelta] = None) -> str:
         expire = datetime.now(timezone.utc) + (
-            expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+            expires_delta or timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
         )
         payload = {"sub": user_id, "exp": expire}
         return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
