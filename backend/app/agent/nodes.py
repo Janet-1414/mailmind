@@ -3,7 +3,7 @@ LangGraph agent node implementations for MailMind.
 Each async method corresponds to one node in the pipeline:
   - analyze:    extracts intent, urgency, sentiment and key points
   - retrieve:   fetches relevant past context from Pinecone memory
-  - web_search: optionally searches the web via Tavily
+  - web_search: optionally searches the web via Tavily (query truncated to 400 chars)
   - draft:      generates the initial reply using all available context
   - refine:     polishes the draft, enforces tone and hint, persists to memory
   - score:      generates a confidence score for the final reply
@@ -25,20 +25,12 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-COST_TABLE = {
-    "gpt-4o":            (0.005,   0.015),
-    "gpt-4o-mini":       (0.00015, 0.0006),
-    "gpt-3.5-turbo":     (0.0005,  0.0015),
-    "claude-3-5-haiku":  (0.00025, 0.00125),
-}
-
 
 class AgentNodes:
     """All LangGraph node implementations for the MailMind agent pipeline."""
 
     def __init__(self):
-        # Clients configured with timeouts to prevent hanging requests
-        self._openai   = AsyncOpenAI(
+        self._openai = AsyncOpenAI(
             api_key=settings.OPENAI_API_KEY,
             timeout=settings.OPENAI_TIMEOUT,
         )
@@ -49,7 +41,7 @@ class AgentNodes:
 
     @RetryHandler(max_attempts=3, backoff_factor=2.0)
     async def _call_llm(self, state: AgentState, prompt: str) -> tuple[str, object]:
-        """Call the appropriate LLM based on the model in state. Returns (text, usage)."""
+        """Call the appropriate LLM. Returns (text, usage)."""
         model = state["model"]
         if model.startswith("claude"):
             response = await self._anthropic.messages.create(
@@ -73,10 +65,9 @@ class AgentNodes:
         return text, usage
 
     async def analyze(self, state: AgentState) -> AgentState:
-        """Analyze the email and extract intent, sentiment, urgency, key points.
-        Also runs structural analysis via EmailAnalyzerTool before LLM call."""
-        # Run structural pre-analysis
-        struct = analyze_email(state["email_content"])
+        """Analyze email — extract intent, sentiment, urgency, key points.
+        Also runs EmailAnalyzerTool for structural pre-analysis."""
+        struct         = analyze_email(state["email_content"])
         struct_summary = format_analysis_for_prompt(struct)
         logger.info("Structural analysis: %s", struct_summary)
 
@@ -85,20 +76,24 @@ class AgentNodes:
         counter.add(usage)
 
         try:
-            parsed = json.loads(text)
-            intent    = parsed.get("intent", "general inquiry")
-            sentiment = parsed.get("sentiment", "neutral")
-            urgency   = parsed.get("urgency", struct.urgency_signals[0] if struct.urgency_signals else "medium")
+            parsed     = json.loads(text)
+            intent     = parsed.get("intent", "general inquiry")
+            sentiment  = parsed.get("sentiment", "neutral")
+            urgency    = parsed.get("urgency", "medium")
             key_points = parsed.get("key_points", [])
         except (json.JSONDecodeError, AttributeError):
             intent, sentiment, urgency, key_points = "general inquiry", "neutral", "medium", []
+
+        # Override urgency with structural signal if detected
+        if struct.is_urgent and urgency == "medium":
+            urgency = "high"
 
         return {
             **state,
             "analysis":   text,
             "intent":     intent,
             "sentiment":  sentiment,
-            "urgency":    urgency if struct.is_urgent else urgency,
+            "urgency":    urgency,
             "key_points": key_points,
             **counter.to_dict(),
         }
@@ -123,11 +118,13 @@ class AgentNodes:
         }
 
     async def web_search(self, state: AgentState) -> AgentState:
-        """Optionally search the web via Tavily. Skipped if web_search_enabled is False."""
+        """Optionally search the web via Tavily. Query truncated to 400 chars."""
         if not state.get("web_search_enabled"):
             return {**state, "search_results": ""}
         try:
-            results = await search_web(state["email_content"])
+            # Tavily max query length is 400 characters
+            query   = state["email_content"][:400]
+            results = await search_web(query)
             return {**state, "search_results": results}
         except Exception as exc:
             logger.warning("Web search failed (non-fatal): %s", exc)
@@ -154,15 +151,13 @@ class AgentNodes:
         return {**state, "draft_reply": draft_text, **counter.to_dict()}
 
     async def refine(self, state: AgentState) -> AgentState:
-        """Polish the draft, enforce tone and hint, persist to Pinecone memory."""
+        """Polish the draft, enforce tone and hint, persist to Pinecone + DB."""
         refined, usage = await self._call_llm(
             state,
             prompts.refine(state["tone"], state["draft_reply"], state.get("hint", "")),
         )
-        
         counter = TokenCounter(state["model"])
         counter.add(usage)
-
 
         sources: list[str] = []
         if state.get("memory_used"):
@@ -170,18 +165,32 @@ class AgentNodes:
         if state.get("search_results"):
             sources.append("Web search")
 
-        # Persist to Pinecone memory with per-user namespace
+        # Persist to Pinecone AND save MemoryLog to DB so memory page shows it
         try:
             memory_content = (
                 f"Email: {state['email_content'][:300]}\n"
                 f"Tone: {state['tone']}\n"
                 f"Reply: {refined[:300]}"
             )
-            memory_service.store(
+            vector_id = memory_service.store(
                 user_id=state["user_id"],
                 content=memory_content,
                 namespace=f"user-{state['user_id']}",
             )
+            if vector_id:
+                from app.database.base import get_db
+                from app.memory.models import MemoryLog
+                db = next(get_db())
+                try:
+                    log = MemoryLog(
+                        user_id=state["user_id"],
+                        pinecone_id=vector_id,
+                        content=memory_content,
+                    )
+                    db.add(log)
+                    db.commit()
+                finally:
+                    db.close()
         except Exception as exc:
             logger.warning("Failed to persist memory (non-fatal): %s", exc)
 
@@ -196,7 +205,7 @@ class AgentNodes:
     async def score(self, state: AgentState) -> AgentState:
         """Generate a confidence score (0.0-1.0) for the final reply."""
         try:
-            text, usage = await self._call_llm(
+            text, _ = await self._call_llm(
                 state,
                 prompts.confidence(state["email_content"], state["final_reply"]),
             )

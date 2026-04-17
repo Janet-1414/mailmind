@@ -1,10 +1,11 @@
 """
 FastAPI router for the MailMind agent — POST /agent/reply.
-Accepts a validated email payload, checks Redis cache, runs the LangGraph
-pipeline on miss, persists result to DB, and returns the reply with usage,
-confidence score, and thread info. Rate limited to prevent API abuse.
+Thread is only created AFTER the agent successfully completes to avoid
+ghost sessions. Correction retries delete the previous rejected log.
+Rate limited to prevent API abuse.
 """
 import logging
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
@@ -19,8 +20,8 @@ from app.threads.models import Thread
 from app.utils.rate_limiter import limiter
 from app.config import settings
 
-logger  = logging.getLogger(__name__)
-router  = APIRouter()
+logger = logging.getLogger(__name__)
+router = APIRouter()
 
 
 @router.post("/reply", response_model=ReplyResponse)
@@ -32,36 +33,44 @@ async def generate_reply(
     current_user: User = Depends(get_current_user),
 ):
     s = req.settings
+    is_correction = req.hint.startswith("The previous reply was rejected")
 
-    # ── Thread resolution ──────────────────────────────────────────────────────
+    # ── Resolve existing thread if provided ───────────────────────────────────
+    thread = None
     if req.thread_id:
         thread = db.query(Thread).filter(
             Thread.id == req.thread_id,
             Thread.user_id == current_user.id,
         ).first()
-    else:
-        thread = None
 
-    if not thread:
-        title = req.email_content[:60].strip().replace("\n", " ")
-        thread = Thread(user_id=current_user.id, title=title)
-        db.add(thread)
-        db.commit()
-        db.refresh(thread)
+    # ── On correction retry: delete the last rejected log ─────────────────────
+    if is_correction and thread:
+        last_log = (
+            db.query(EmailLog)
+            .filter(EmailLog.thread_id == thread.id)
+            .order_by(EmailLog.created_at.desc())
+            .first()
+        )
+        if last_log:
+            db.delete(last_log)
+            db.commit()
+            logger.info("Deleted rejected log for correction retry in thread %s", thread.id)
 
     # ── Conversation history (last N exchanges only) ──────────────────────────
-    history = [
-        {"email_content": log.email_content, "reply": log.reply}
-        for log in thread.email_logs[-settings.MAX_HISTORY_EXCHANGES:]
-    ]
+    history = []
+    if thread:
+        history = [
+            {"email_content": log.email_content, "reply": log.reply}
+            for log in thread.email_logs[-settings.MAX_HISTORY_EXCHANGES:]
+        ]
 
     # ── Cache check ───────────────────────────────────────────────────────────
     cached_data = cache_service.get(req.email_content, s.tone, s.model, req.hint)
-    if cached_data:
+    if cached_data and thread:
         logger.info("Cache hit for user %s", current_user.id)
         return ReplyResponse(**{**cached_data, "cached": True, "thread_id": thread.id})
 
-    # ── Build initial state and run agent ─────────────────────────────────────
+    # ── Run the agent ─────────────────────────────────────────────────────────
     initial_state = MailMindAgent.build_initial_state(
         email_content=req.email_content,
         tone=s.tone,
@@ -77,12 +86,25 @@ async def generate_reply(
 
     final_state = await mailmind_agent.run(initial_state)
 
-    # ── Persist to DB ─────────────────────────────────────────────────────────
+    # ── Create thread ONLY after agent succeeds (prevents ghost sessions) ─────
+    now = datetime.now(timezone.utc)
+    if not thread:
+        title  = req.email_content[:60].strip().replace("\n", " ")
+        thread = Thread(
+            user_id=current_user.id,
+            title=title,
+            updated_at=now,
+        )
+        db.add(thread)
+        db.commit()
+        db.refresh(thread)
+
+    # ── Persist email log ─────────────────────────────────────────────────────
     log = EmailLog(
         user_id=current_user.id,
         thread_id=thread.id,
         email_content=req.email_content,
-        hint=req.hint if not req.hint.startswith("The previous reply was rejected") else "",
+        hint="" if is_correction else req.hint,
         reply=final_state["final_reply"],
         tone=s.tone,
         model=s.model,
@@ -92,10 +114,10 @@ async def generate_reply(
         cost_usd=final_state["cost_usd"],
         cached=False,
         confidence_score=final_state.get("confidence_score"),
+        created_at=now,
     )
     db.add(log)
-    from datetime import datetime, timezone
-    thread.updated_at = datetime.now(timezone.utc)
+    thread.updated_at = now
     db.commit()
     db.refresh(log)
 
@@ -115,7 +137,5 @@ async def generate_reply(
         confidence_score=final_state.get("confidence_score"),
     )
 
-    # ── Cache the result ──────────────────────────────────────────────────────
     cache_service.set(req.email_content, s.tone, s.model, response.model_dump(), req.hint)
-
     return response

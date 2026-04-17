@@ -1,8 +1,7 @@
 /**
  * ThreadSidebar component for MailMind.
  * Fixed left sidebar showing all conversation threads for the current user.
- * Supports selecting a thread to resume, inline rename on click of the
- * edit icon, and delete. Refreshes automatically when a new reply is generated.
+ * Supports selecting, inline rename, delete single thread, and clear all history.
  * Styled with Midnight Slate theme variables for light/dark compatibility.
  */
 "use client";
@@ -22,9 +21,11 @@ const threadService = new ThreadService();
 export default function ThreadSidebar({
   activeThreadId, onSelectThread, onNewThread, refreshTrigger,
 }: ThreadSidebarProps) {
-  const [threads,   setThreads]   = useState<ThreadSummary[]>([]);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState("");
+  const [threads,        setThreads]        = useState<ThreadSummary[]>([]);
+  const [editingId,      setEditingId]      = useState<string | null>(null);
+  const [editTitle,      setEditTitle]      = useState("");
+  const [showClearAll,   setShowClearAll]   = useState(false);
+  const [clearingAll,    setClearingAll]    = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { loadThreads(); }, [refreshTrigger]);
@@ -52,6 +53,19 @@ export default function ThreadSidebar({
     } catch { /* fail silently */ }
   };
 
+  const handleClearAll = async () => {
+    setClearingAll(true);
+    try {
+      await Promise.all(threads.map((t) => threadService.delete(t.id)));
+      setThreads([]);
+      onNewThread();
+    } catch { /* fail silently */ }
+    finally {
+      setClearingAll(false);
+      setShowClearAll(false);
+    }
+  };
+
   const startEdit = (e: React.MouseEvent, thread: ThreadSummary) => {
     e.stopPropagation();
     setEditingId(thread.id);
@@ -68,9 +82,51 @@ export default function ThreadSidebar({
         <span className="text-lg">✦</span> New conversation
       </button>
 
-      <p className="text-xs font-sans uppercase tracking-widest mb-2 px-1" style={{ color: "var(--text-muted)" }}>
-        History
-      </p>
+      {/* History header with clear all */}
+      <div className="flex items-center justify-between mb-2 px-1">
+        <p className="text-xs font-sans uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+          History
+        </p>
+        {threads.length > 0 && (
+          <button
+            onClick={() => setShowClearAll(true)}
+            className="text-xs font-sans transition-colors hover:opacity-80"
+            style={{ color: "#ef4444" }}
+            title="Clear all history"
+          >
+            Clear all
+          </button>
+        )}
+      </div>
+
+      {/* Confirm clear all */}
+      {showClearAll && (
+        <div
+          className="rounded-xl p-3 mb-3 space-y-2"
+          style={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca" }}
+        >
+          <p className="font-sans text-xs" style={{ color: "#dc2626" }}>
+            Delete all {threads.length} conversation{threads.length > 1 ? "s" : ""}?
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleClearAll}
+              disabled={clearingAll}
+              className="flex-1 text-xs font-sans font-medium py-1.5 rounded-lg transition-colors"
+              style={{ backgroundColor: "#dc2626", color: "#fff" }}
+            >
+              {clearingAll ? "Clearing…" : "Yes, delete all"}
+            </button>
+            <button
+              onClick={() => setShowClearAll(false)}
+              className="flex-1 text-xs font-sans font-medium py-1.5 rounded-lg transition-colors"
+              style={{ backgroundColor: "var(--border)", color: "var(--text)" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto space-y-1">
         {threads.length === 0 && (
@@ -108,10 +164,7 @@ export default function ThreadSidebar({
                 }}
                 onClick={(e) => e.stopPropagation()}
                 className="w-full bg-transparent text-sm font-sans outline-none py-0.5"
-                style={{
-                  borderBottom: `1px solid var(--accent)`,
-                  color: "var(--text)",
-                }}
+                style={{ borderBottom: `1px solid var(--accent)`, color: "var(--text)" }}
               />
             ) : (
               <>

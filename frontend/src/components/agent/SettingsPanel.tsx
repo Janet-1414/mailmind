@@ -2,7 +2,7 @@
  * SettingsPanel component for MailMind.
  * Collects agent configuration — LLM model, tone, temperature, top-p,
  * frequency penalty, and web search toggle. Passes settings up via onChange.
- * Styled with Midnight Slate theme variables for light/dark compatibility.
+ * Sliders use explicit CSS to show track in both light and dark mode.
  */
 "use client";
 import ToneSelector  from "@/components/agent/ToneSelector";
@@ -10,27 +10,79 @@ import ModelSelector from "@/components/agent/ModelSelector";
 import type { AgentSettings } from "@/types";
 
 interface SettingsPanelProps {
-  settings:  AgentSettings;
-  onChange:  (s: AgentSettings) => void;
+  settings: AgentSettings;
+  onChange: (s: AgentSettings) => void;
 }
 
 function Slider({ label, value, min, max, step, onChange }: {
   label: string; value: number; min: number; max: number; step: number;
   onChange: (v: number) => void;
 }) {
+  const pct = ((value - min) / (max - min)) * 100;
+
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
         <label className="label mb-0">{label}</label>
-        <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{value.toFixed(2)}</span>
+        <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+          {value.toFixed(2)}
+        </span>
       </div>
-      <input
-        type="range" min={min} max={max} step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
-        style={{ accentColor: "var(--accent)" }}
-      />
+      <div className="relative h-5 flex items-center">
+        {/* Track background */}
+        <div
+          className="absolute w-full h-1.5 rounded-full"
+          style={{ backgroundColor: "var(--border-dark)" }}
+        />
+        {/* Filled portion */}
+        <div
+          className="absolute h-1.5 rounded-full"
+          style={{
+            width: `${pct}%`,
+            backgroundColor: "var(--accent)",
+          }}
+        />
+        {/* Native input on top for interaction */}
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          className="absolute w-full h-1.5 cursor-pointer appearance-none bg-transparent"
+          style={{
+            // Make the native thumb visible, hide native track
+            accentColor: "var(--accent)",
+          }}
+        />
+      </div>
+      <style>{`
+        input[type=range]::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: var(--accent);
+          cursor: pointer;
+          border: 2px solid var(--surface);
+          box-shadow: 0 0 0 1px var(--accent);
+        }
+        input[type=range]::-moz-range-thumb {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: var(--accent);
+          cursor: pointer;
+          border: 2px solid var(--surface);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+          background: transparent;
+        }
+        input[type=range]::-moz-range-track {
+          background: transparent;
+        }
+      `}</style>
     </div>
   );
 }
@@ -40,7 +92,9 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
 
   return (
     <div className="card space-y-5">
-      <h2 className="font-serif font-semibold" style={{ color: "var(--primary)" }}>Agent Settings</h2>
+      <h2 className="font-serif font-semibold" style={{ color: "var(--primary)" }}>
+        Agent Settings
+      </h2>
 
       <div>
         <label className="label">Model</label>
@@ -73,13 +127,19 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
 
       <div className="flex items-center justify-between">
         <div>
-          <p className="font-sans text-sm font-medium" style={{ color: "var(--text)" }}>Web search</p>
-          <p className="font-sans text-xs" style={{ color: "var(--text-muted)" }}>Search the web for current info</p>
+          <p className="font-sans text-sm font-medium" style={{ color: "var(--text)" }}>
+            Web search
+          </p>
+          <p className="font-sans text-xs" style={{ color: "var(--text-muted)" }}>
+            Search the web for current info
+          </p>
         </div>
         <button
           onClick={() => set({ webSearchEnabled: !settings.webSearchEnabled })}
-          className="relative w-11 h-6 rounded-full transition-colors duration-200"
-          style={{ backgroundColor: settings.webSearchEnabled ? "var(--accent)" : "var(--border-dark)" }}
+          className="relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0"
+          style={{
+            backgroundColor: settings.webSearchEnabled ? "var(--accent)" : "var(--border-dark)",
+          }}
         >
           <span
             className="absolute top-0.5 w-5 h-5 rounded-full transition-transform duration-200"

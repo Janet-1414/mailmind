@@ -13,6 +13,7 @@ from app.config import settings
 from app.database.connection import create_tables
 from app.auth.router import router as auth_router
 from app.agent.router import router as agent_router
+from app.agent.streaming import stream_router
 from app.memory.router import router as memory_router
 from app.feedback.router import router as feedback_router
 from app.threads.router import router as threads_router
@@ -26,7 +27,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── LangSmith tracing ─────────────────────────────────────────────────────────
 if settings.LANGCHAIN_TRACING_V2 == "true" and settings.LANGCHAIN_API_KEY:
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
     os.environ["LANGCHAIN_API_KEY"]    = settings.LANGCHAIN_API_KEY
@@ -63,6 +63,7 @@ app.add_middleware(
 
 app.include_router(auth_router,     prefix="/auth",     tags=["auth"])
 app.include_router(agent_router,    prefix="/agent",    tags=["agent"])
+app.include_router(stream_router,   prefix="/agent",    tags=["agent"])
 app.include_router(memory_router,   prefix="/memory",   tags=["memory"])
 app.include_router(feedback_router, prefix="/feedback", tags=["feedback"])
 app.include_router(threads_router,  prefix="/threads",  tags=["threads"])

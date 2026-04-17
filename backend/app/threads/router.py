@@ -1,3 +1,9 @@
+"""
+FastAPI router for conversation threads — /threads prefix.
+Exposes endpoints to list all threads, fetch a single thread with its
+full exchange history, rename a thread title, and delete a thread.
+All routes require authentication.
+"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
@@ -7,7 +13,6 @@ from app.auth.models import User
 from app.database.base import get_db
 from app.threads.models import Thread
 from app.threads.schemas import ThreadCreate, ThreadResponse, ThreadSummary
-from app.memory.models import EmailLog
 
 router = APIRouter()
 
@@ -102,13 +107,14 @@ def _build_response(thread: Thread) -> ThreadResponse:
         updated_at=thread.updated_at,
         exchanges=[
             {
-                "id": log.id,
-                "email_content": log.email_content,
-                "hint": log.hint or "",
-                "reply": log.reply,
-                "tone": log.tone,
-                "model": log.model,
-                "created_at": log.created_at,
+                "id":               log.id,
+                "email_content":    log.email_content,
+                "hint":             log.hint or "",
+                "reply":            log.reply,
+                "tone":             log.tone,
+                "model":            log.model,
+                "created_at":       log.created_at,
+                "confidence_score": log.confidence_score,
             }
             for log in thread.email_logs
         ],
