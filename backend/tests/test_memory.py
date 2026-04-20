@@ -1,25 +1,25 @@
-"""Tests for the MailMind memory service.
+"""
+Tests for the MailMind memory service.
 Covers storing, retrieving, deleting, clearing, and pruning memories
 with per-user namespace support.
 """
 import pytest
 from unittest.mock import patch, MagicMock
-from tests.conftest import client, db_session
 
 
-def test_list_memory_empty(client):
-    response = client.get("/memory", headers={"Authorization": "Bearer testtoken"})
-    assert response.status_code in (200, 401)
+def test_list_memory_unauthenticated(client):
+    response = client.get("/memory")
+    assert response.status_code == 401
 
 
 def test_list_memory_authenticated(client):
-    login = client.post("/auth/login", json={"email": "memory@test.com", "password": "testpass123"})
-    if login.status_code != 200:
-        reg = client.post("/auth/register", json={"name": "Memory Test", "email": "memory@test.com", "password": "testpass123"})
-        assert reg.status_code == 200
-        token = reg.json()["access_token"]
-    else:
-        token = login.json()["access_token"]
+    # Register and login
+    reg = client.post("/auth/register", json={
+        "name": "Memory Test", "email": "memory@test.com", "password": "testpass123"
+    })
+    token = reg.json()["access_token"] if reg.status_code == 200 else \
+            client.post("/auth/login", json={"email": "memory@test.com", "password": "testpass123"}).json()["access_token"]
+
     response = client.get("/memory", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     assert isinstance(response.json(), list)
@@ -27,11 +27,8 @@ def test_list_memory_authenticated(client):
 
 def test_clear_all_memory(client):
     login = client.post("/auth/login", json={"email": "memory@test.com", "password": "testpass123"})
-    if login.status_code != 200:
-        reg = client.post("/auth/register", json={"name": "Memory Test", "email": "memory@test.com", "password": "testpass123"})
-        token = reg.json()["access_token"]
-    else:
-        token = login.json()["access_token"]
+    token = login.json()["access_token"]
+
     with patch("app.memory.service.memory_service.delete_all", return_value=True):
         response = client.delete("/memory", headers={"Authorization": f"Bearer {token}"})
         assert response.status_code == 200
@@ -40,11 +37,8 @@ def test_clear_all_memory(client):
 
 def test_prune_memory_endpoint(client):
     login = client.post("/auth/login", json={"email": "memory@test.com", "password": "testpass123"})
-    if login.status_code != 200:
-        reg = client.post("/auth/register", json={"name": "Memory Test", "email": "memory@test.com", "password": "testpass123"})
-        token = reg.json()["access_token"]
-    else:
-        token = login.json()["access_token"]
+    token = login.json()["access_token"]
+
     with patch("app.memory.service.memory_service.prune_old_memories", return_value=3):
         response = client.post("/memory/prune", headers={"Authorization": f"Bearer {token}"})
         assert response.status_code == 200
