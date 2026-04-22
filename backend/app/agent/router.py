@@ -35,7 +35,7 @@ async def generate_reply(
     s = req.settings
     is_correction = req.hint.startswith("The previous reply was rejected")
 
-    # ── Resolve existing thread if provided ───────────────────────────────────
+    # Resolve existing thread if provided 
     thread = None
     if req.thread_id:
         thread = db.query(Thread).filter(
@@ -43,7 +43,7 @@ async def generate_reply(
             Thread.user_id == current_user.id,
         ).first()
 
-    # ── On correction retry: delete the last rejected log ─────────────────────
+    # On correction retry: delete the last rejected log 
     if is_correction and thread:
         last_log = (
             db.query(EmailLog)
@@ -56,7 +56,7 @@ async def generate_reply(
             db.commit()
             logger.info("Deleted rejected log for correction retry in thread %s", thread.id)
 
-    # ── Conversation history (last N exchanges only) ──────────────────────────
+    # Conversation history (last N exchanges only) 
     history = []
     if thread:
         history = [
@@ -64,13 +64,13 @@ async def generate_reply(
             for log in thread.email_logs[-settings.MAX_HISTORY_EXCHANGES:]
         ]
 
-    # ── Cache check ───────────────────────────────────────────────────────────
+    # Cache check 
     cached_data = cache_service.get(req.email_content, s.tone, s.model, req.hint)
     if cached_data and thread:
         logger.info("Cache hit for user %s", current_user.id)
         return ReplyResponse(**{**cached_data, "cached": True, "thread_id": thread.id})
 
-    # ── Run the agent ─────────────────────────────────────────────────────────
+    # Run the agent 
     initial_state = MailMindAgent.build_initial_state(
         email_content=req.email_content,
         tone=s.tone,
@@ -86,7 +86,7 @@ async def generate_reply(
 
     final_state = await mailmind_agent.run(initial_state)
 
-    # ── Create thread ONLY after agent succeeds (prevents ghost sessions) ─────
+    # Create thread ONLY after agent succeeds (prevents ghost sessions) 
     now = datetime.now(timezone.utc)
     if not thread:
         title  = req.email_content[:60].strip().replace("\n", " ")
@@ -99,7 +99,7 @@ async def generate_reply(
         db.commit()
         db.refresh(thread)
 
-    # ── Persist email log ─────────────────────────────────────────────────────
+    # Persist email log 
     log = EmailLog(
         user_id=current_user.id,
         thread_id=thread.id,

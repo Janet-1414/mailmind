@@ -5,6 +5,7 @@
  * light/dark mode support, and provides the base HTML structure.
  */
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import "./globals.css";
 import ThemeProvider from "@/providers/ThemeProvider";
 
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
   description: "Craft perfect email replies with AI, memory, and your personal tone.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body>

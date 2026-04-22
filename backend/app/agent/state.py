@@ -9,7 +9,7 @@ from typing import TypedDict, List, Any
 
 
 class AgentState(TypedDict):
-    # ── Input ─────────────────────────────────────────────────────────────────
+    # Input 
     email_content:       str
     tone:                str
     model:               str
@@ -21,7 +21,7 @@ class AgentState(TypedDict):
     hint:                str
     conversation_history: List[Any]
 
-    # ── Pipeline state ────────────────────────────────────────────────────────
+    # Pipeline state 
     analysis:            str
     intent:              str
     sentiment:           str
@@ -34,7 +34,7 @@ class AgentState(TypedDict):
     sources:             List[str]
     confidence_score:    float
 
-    # ── Token tracking ────────────────────────────────────────────────────────
+    # Token tracking 
     prompt_tokens:       int
     completion_tokens:   int
     total_tokens:        int

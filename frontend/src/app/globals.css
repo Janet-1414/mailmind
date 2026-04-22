@@ -4,7 +4,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Light mode (default) ─────────────────────────────────────────────────── */
+/* Light mode (default)  */
 :root {
   --bg:          #F4F6F9;
   --surface:     #FFFFFF;
@@ -19,7 +19,7 @@
   --text-muted:  #64748B;
 }
 
-/* ── Dark mode ────────────────────────────────────────────────────────────── */
+/*  Dark mode  */
 .dark {
   --bg:          #0F172A;
   --surface:     #1E293B;

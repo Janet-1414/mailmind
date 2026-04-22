@@ -110,7 +110,7 @@ export function useEmailAgent() {
       }
 
     } catch {
-      // ── Fallback to standard JSON endpoint ────────────────────────────────
+      //  Fallback to standard JSON endpoint 
       try {
         const result = await agentService.generateReply(
           emailContent, settings, hint, threadId, history,

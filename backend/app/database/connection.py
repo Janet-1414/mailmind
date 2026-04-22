@@ -11,7 +11,7 @@ from app.database.base import Base
 
 logger = logging.getLogger(__name__)
 
-# ── Engine setup ──────────────────────────────────────────────────────────────
+# Engine setup 
 _is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 
 if _is_sqlite:

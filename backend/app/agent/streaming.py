@@ -84,8 +84,7 @@ async def stream_reply(
     s = req.settings
     is_correction = req.hint.startswith("The previous reply was rejected")
 
-    # ── Resolve thread ────────────────────────────────────────────────────────
-    thread = None
+    # Resolve thread 
     if req.thread_id:
         thread = db.query(Thread).filter(
             Thread.id == req.thread_id,
@@ -110,7 +109,7 @@ async def stream_reply(
             for log in thread.email_logs[-settings.MAX_HISTORY_EXCHANGES:]
         ]
 
-    # ── Run pipeline up to draft (non-streaming) ──────────────────────────────
+    # Run pipeline up to draft (non-streaming) 
     nodes = AgentNodes()
     state = MailMindAgent.build_initial_state(
         email_content=req.email_content,
@@ -130,7 +129,7 @@ async def stream_reply(
     state = {**state, **await nodes.web_search(state)}
     state = {**state, **await nodes.draft(state)}
 
-    # ── Collect full streamed reply then persist ───────────────────────────────
+    # Collect full streamed reply then persist 
     full_reply = []
 
     async def event_generator():

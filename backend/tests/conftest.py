@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.database.base import Base, get_db
 
-# ── In-memory test database ───────────────────────────────────────────────────
+# In-memory test database 
 TEST_DATABASE_URL = "sqlite:///./test_mailmind.db"
 
 engine = create_engine(
